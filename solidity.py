@@ -3,6 +3,7 @@ import copy
 from dataclasses import dataclass
 import re
 
+
 OP_CODES = {
     "STOP": {
         "gas": {
@@ -464,7 +465,7 @@ OP_CODES = {
         }
     }
 }
-OP_CODES_REGEX = f"(?P<name>{'|'.join(OP_CODES.keys())})(?P<number>\\d+)?( (?P<arg>.+))?"
+OP_CODES_REGEX = f"(?P<name>({'|'.join(OP_CODES.keys())}))(?P<number>\\d+)?(\\s+(?P<arg>[^- ]+))?"
 
 
 @dataclass
@@ -480,6 +481,35 @@ class Command:
     @property
     def gas_warm(self):
         return OP_CODES[self.name]["gas"]["warm"]
+
+    @classmethod
+    def parse_line(cls, line: str):
+        """
+        >>> Command.parse_line("070 DUP1 - LINE 12")
+        Command(name='DUP', number=1, arg='')
+        >>> Command.parse_line("071 PUSH2 0102 - LINE 12")
+        Command(name='PUSH', number=2, arg='0102')
+        >>> Command.parse_line("071 SLOAD - LINE 12")
+        Command(name='SLOAD', number=0, arg='')
+        >>> Command.parse_line("SLOAD")
+        Command(name='SLOAD', number=0, arg='')
+        >>> Command.parse_line("NOTACODE")
+        >>> Command.parse_line("")
+        """
+        if m := re.match(f"(.+)?{OP_CODES_REGEX}(\\s+.+$|$)", line):
+            return cls(m["name"], int(m["number"] or 0), m["arg"] or "")
+
+    @classmethod
+    def parse(cls, block: str):
+        """
+        >>> list(Command.parse('''070 DUP1 - LINE 12
+        ... 071 PUSH2 0102 - LINE 12
+        ... 071 SLOAD - LINE 12'''))
+        [Command(name='DUP', number=1, arg=''), Command(name='PUSH', number=2, arg='0102'), Command(name='SLOAD', number=0, arg='')]
+        """
+        for line in block.splitlines():
+            if command := cls.parse_line(line):
+                yield command
 
 
 @dataclass
@@ -512,19 +542,6 @@ class Memory:
 
     def __repr__(self) -> str:
         return f"Memory(stack={self.stack}, slots={dict(self.slots)})"
-
-
-def parse_command(line: str) -> Command:
-    """
-    >>> parse_command("070 DUP1 - LINE 12")
-    Command(name='DUP', number=1, arg='')
-    >>> parse_command("071 PUSH2 0102 - LINE 12")
-    Command(name='PUSH', number=2, arg='0102')
-    >>> parse_command("071 SLOAD - LINE 12")
-    Command(name='SLOAD', number=0, arg='')
-    """
-    m = re.match(f"(.+)?{OP_CODES_REGEX} -", line)
-    return Command(m["name"], int(m["number"] or 0), m["arg"] or "")
 
 
 def run_command(command: Command, memory: Memory):
@@ -568,7 +585,7 @@ def run_command(command: Command, memory: Memory):
         ...
     Exception: Unknown command Command(name='DEADBEEF', number=0, arg='')
     """
-    stack = memory.stack
+    stack = copy.deepcopy(memory.stack)
     slots = copy.deepcopy(memory.slots)
     gas_used = None
 
@@ -611,14 +628,16 @@ def run_command(command: Command, memory: Memory):
 
 
 
-def run(command_lines: list[str], memory: Memory):
+def run(commands: list[Command], memory: Memory):
     """
-    >>> run(["071 PUSH2 0102 - LINE 12", "070 DUP1 - LINE 12", "070 DUP3 - LINE 12"], Memory([10, 20], []))
+    >>> run(
+    ...     [Command(name='PUSH', number=2, arg='0102'), Command(name='DUP', number=1, arg=''), Command(name='DUP', number=3, arg='')],
+    ...     Memory([10, 20], [])
+    ... )
     (Memory(stack=[10, 258, 258, 10, 20], slots={}), 9)
     """
     all_gas_used = 0
-    for command_line in command_lines:
-        command = parse_command(command_line)
+    for command in commands:
         memory, gas_used = run_command(command, memory)
         all_gas_used += gas_used
     return memory, all_gas_used
@@ -636,51 +655,48 @@ initial_memory = Memory(
     ],
 )
 
-memory1, gas_used1 = run(
-    [  
-        "117 PUSH1 00 - LINE 12",
-        "119 DUP1 - LINE 12",
-        "120 PUSH2 0100 - LINE 12",
-        "123 EXP - LINE 12",
-        "124 DUP2 - LINE 12",
-        "125 SLOAD - LINE 12",
-        "126 DUP2 - LINE 12",
-        "127 PUSH4 ffffffff - LINE 12",
-        "132 MUL - LINE 12",
-        "133 NOT - LINE 12",
-        "134 AND - LINE 12",
-        "135 SWAP1 - LINE 12",
-        "136 DUP4 - LINE 12",
-        "137 PUSH4 ffffffff - LINE 12",
-        "142 AND - LINE 12",
-        "143 MUL - LINE 12",
-        "144 OR - LINE 12",
-        "145 SWAP1 - LINE 12",
-        "146 SSTORE - LINE 12",
-        "147 POP - LINE 12",
-        "148 POP - LINE 12",
-    ],
-    memory=initial_memory,
-)
 
-memory2, gas_used2 = run(
-    [
-        "070 DUP1 - LINE 12",
-        "081 PUSH4 ffffffff - LINE 12",
-        "087 AND - LINE 12",
-        "071 PUSH1 00 - LINE 12",
-        "079 SLOAD - LINE 12",
-        "081 PUSH4 ffffffff - LINE 12",
-        "081 NOT - LINE 12",
-        "087 AND - LINE 12",
-        "079 OR - LINE 12",
-        "081 PUSH1 00 - LINE 12",
-        "079 SSTORE - LINE 12",
-        "079 POP - LINE 12",
-        "079 POP - LINE 12",
-    ],
-    memory=initial_memory,
-)
+commands = Command.parse("""
+    117 PUSH1 00 - LINE 12
+    119 DUP1 - LINE 12
+    120 PUSH2 0100 - LINE 12
+    123 EXP - LINE 12
+    124 DUP2 - LINE 12
+    125 SLOAD - LINE 12
+    126 DUP2 - LINE 12
+    127 PUSH4 ffffffff - LINE 12
+    132 MUL - LINE 12
+    133 NOT - LINE 12
+    134 AND - LINE 12
+    135 SWAP1 - LINE 12
+    136 DUP4 - LINE 12
+    137 PUSH4 ffffffff - LINE 12
+    142 AND - LINE 12
+    143 MUL - LINE 12
+    144 OR - LINE 12
+    145 SWAP1 - LINE 12
+    146 SSTORE - LINE 12
+    147 POP - LINE 12
+    148 POP - LINE 12
+""")
+memory1, gas_used1 = run(commands=commands, memory=initial_memory)
+
+commands = Command.parse("""
+    070 DUP1 - LINE 12
+    081 PUSH4 ffffffff - LINE 12
+    087 AND - LINE 12
+    071 PUSH1 00 - LINE 12
+    079 SLOAD - LINE 12
+    081 PUSH4 ffffffff - LINE 12
+    081 NOT - LINE 12
+    087 AND - LINE 12
+    079 OR - LINE 12
+    081 PUSH1 00 - LINE 12
+    079 SSTORE - LINE 12
+    079 POP - LINE 12
+    079 POP - LINE 12
+""")
+memory2, gas_used2 = run(commands=commands, memory=initial_memory)
 
 print(f"memory1: {memory1}, gas_used1: {gas_used1}")
 print(f"memory2: {memory2}, gas_used2: {gas_used2}")

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import re
+from memory import Memory
 
 from op_codes import OP_CODES
 
@@ -13,13 +14,11 @@ class Command:
     number: int
     arg: str
 
-    @property
-    def gas_cold(self):
-        return OP_CODES[self.name]["gas"]["cold"]
-
-    @property
-    def gas_warm(self):
-        return OP_CODES[self.name]["gas"]["warm"]
+    def gas_used(self, before: Memory, after: Memory, original: Memory) -> int:
+        gas = OP_CODES[self.name]["gas"]
+        if callable(gas):
+            gas = gas(before, after, original)
+        return gas
 
     @classmethod
     def parse_line(cls, line: str):

@@ -5,9 +5,13 @@ name = "pypi"
 
 [packages]
 pytest = "*"
+tabulate = "*"
 
 [dev-packages]
 
 [requires]
 python_version = "3.10"
 python_full_version = "3.10.6"
+
+[scripts]
+example = "python example.py"

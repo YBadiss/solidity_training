@@ -51,11 +51,11 @@ def run_command(command: Command, memory: Memory):
     >>> run_command(Command('NOT', 0, ''), Memory([3, 4], []))[0]
     Memory(stack=[115792089237316195423570985008687907853269984665640564039457584007913129639932, 4], slots={})
     >>> run_command(Command('SLOAD', 0, ''), Memory([1, 2], [Slot(10), Slot(20)]))[0]
-    Memory(stack=[20, 2], slots={0: Slot(value=10, is_warm=False), 1: Slot(value=20, is_warm=True)})
+    Memory(stack=[20, 2], slots={0: Slot(value=0xa), 1: Slot(value=0x14)})
     >>> run_command(Command('SSTORE', 0, ''), Memory([1, 2], [Slot(10), Slot(20)]))[0]
-    Memory(stack=[], slots={0: Slot(value=10, is_warm=False), 1: Slot(value=2, is_warm=True)})
+    Memory(stack=[], slots={0: Slot(value=0xa), 1: Slot(value=0x2)})
     >>> run_command(Command('SSTORE', 0, ''), Memory([4, 1], [Slot(10), Slot(20)]))[0]
-    Memory(stack=[], slots={0: Slot(value=10, is_warm=False), 1: Slot(value=20, is_warm=False), 4: Slot(value=1, is_warm=True)})
+    Memory(stack=[], slots={0: Slot(value=0xa), 1: Slot(value=0x14), 4: Slot(value=0x1)})
     >>> run_command(Command('DEADBEEF', 0, ''), Memory([2, 1], [Slot(10), Slot(20)]))
     Traceback (most recent call last):
         ...
@@ -112,7 +112,7 @@ def compare(command_sets: list[str], stack: list[int], slots: list[int] | dict[i
     results = [
         (
             i,
-            "-- Same --" if memory == results[0][1] else memory,
+            results[0][1].diff(memory),
             gas_used,
             round((gas_used - results[0][2]) / results[0][2] * 100, 2),
         )
